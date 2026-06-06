@@ -28,7 +28,7 @@ export default function Header({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             <div>
-              <h1 className="font-orbitron font-extrabold text-xl sm:text-2xl tracking-widest text-themeAccent text-glow">
+              <h1 className="heading-glitch font-orbitron font-extrabold text-xl sm:text-2xl tracking-widest text-themeAccent text-glow" data-text="EMOTION MIRROR">
                 EMOTION MIRROR
               </h1>
               <p className="font-mono text-[9px] text-slate-500 uppercase tracking-wider hidden sm:block">
@@ -66,21 +66,7 @@ export default function Header({
               {simulatorMode ? 'SIMULATOR ON' : 'SIMULATOR OFF'}
             </button>
 
-            {/* FPS Indicator */}
-            <div className="flex items-center px-2 py-1 space-x-1.5 bg-slate-900 border border-slate-800 rounded font-mono text-[10px] sm:text-xs">
-              <span className="text-slate-500">FPS:</span>
-              <span className={fps > 20 ? 'text-emerald-400 font-bold' : fps > 10 ? 'text-amber-400' : 'text-rose-500'}>
-                {fps}
-              </span>
-            </div>
 
-            {/* Face Count Indicator */}
-            <div className="flex items-center px-2 py-1 space-x-1.5 bg-slate-900 border border-slate-800 rounded font-mono text-[10px] sm:text-xs">
-              <span className="text-slate-500 font-mono">SUBJECTS:</span>
-              <span className={faceCount > 0 ? 'text-themeAccent font-bold' : 'text-slate-500'}>
-                {faceCount.toString().padStart(2, '0')}
-              </span>
-            </div>
 
             {/* Stream Status Dot */}
             <div className="flex items-center px-2 py-1 space-x-1.5 bg-slate-900 border border-slate-800 rounded font-mono text-[10px] sm:text-xs">

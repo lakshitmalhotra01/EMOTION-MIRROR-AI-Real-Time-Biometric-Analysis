@@ -1,60 +1,74 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as faceapi from 'face-api.js';
 import { drawCyberpunkBox, drawFaceMesh, drawTelemetryReadout } from '../utils/drawingHelpers';
 import { getDominantEmotion, getEmotionColor, getEmotionEmoji } from '../utils/emotionHelpers';
 
 /**
- * Core ML Hook. Orchestrates requestAnimationFrame loop, frame rate limiting,
- * model inference execution, canvas overlay drawing, and state updates.
+ * Core ML Hook with EMA expression smoothing for stable emotion detection.
+ * Uses smaller inputSize (128) for real-time performance and lower threshold.
  */
-export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {}) {
+export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {}, onEmotionChange) {
   const [detections, setDetections] = useState([]);
   const [fps, setFps] = useState(0);
   const animationFrameIdRef = useRef(null);
   const isProcessingRef = useRef(false);
-  const lastTimeRef = useRef(performance.now());
   const fpsFrameCountRef = useRef(0);
   const fpsLastTimeRef = useRef(performance.now());
 
-  // Safe reference parameters
+  // EMA smoothing buffer: { faceId -> smoothedExpressions }
+  const emaBufferRef = useRef({});
+  const EMA_ALPHA = 0.35; // 0.35 = moderately smooth (higher = more reactive)
+
   const showLandmarks = settings.showLandmarks ?? true;
   const showAgeGender = settings.showAgeGender ?? true;
   const showConfidenceBars = settings.showConfidenceBars ?? true;
-  const threshold = settings.threshold ?? 0.5;
-
+  const threshold = settings.threshold ?? 0.35; // lower default threshold
   const simulatorMode = settings.simulatorMode ?? false;
 
-  useEffect(() => {
-    if ((!modelsLoaded && !simulatorMode) || !canvasRef.current) {
-      return;
+  // EMA smoother: blend new expression readings with historical buffer
+  const smoothExpressions = useCallback((faceId, newExpressions) => {
+    const prev = emaBufferRef.current[faceId];
+    if (!prev) {
+      emaBufferRef.current[faceId] = { ...newExpressions };
+      return { ...newExpressions };
     }
+    const smoothed = {};
+    Object.keys(newExpressions).forEach((key) => {
+      smoothed[key] = EMA_ALPHA * newExpressions[key] + (1 - EMA_ALPHA) * (prev[key] ?? newExpressions[key]);
+    });
+    emaBufferRef.current[faceId] = smoothed;
+    return smoothed;
+  }, []);
+
+  useEffect(() => {
+    // Clean EMA buffer on mode change
+    emaBufferRef.current = {};
+  }, [simulatorMode]);
+
+  useEffect(() => {
+    if ((!modelsLoaded && !simulatorMode) || !canvasRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
     const detectLoop = async () => {
-      // Limit overlapping cycles
       if (isProcessingRef.current) {
         animationFrameIdRef.current = requestAnimationFrame(detectLoop);
         return;
       }
-
       isProcessingRef.current = true;
-      
-      // If in Simulator Mode, run high-tech neural simulation
-      if (simulatorMode) {
-        const width = (video && video.videoWidth) ? video.videoWidth : 640;
-        const height = (video && video.videoHeight) ? video.videoHeight : 480;
 
+      // ── SIMULATOR MODE ──────────────────────────────────────────────
+      if (simulatorMode) {
+        const width = 640;
+        const height = 480;
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
         }
-
         ctx.clearRect(0, 0, width, height);
 
-        // Calculate FPS
         const now = performance.now();
         fpsFrameCountRef.current++;
         if (now - fpsLastTimeRef.current >= 1000) {
@@ -63,129 +77,100 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
           fpsLastTimeRef.current = now;
         }
 
-        // Cycle through emotions every 5 seconds
         const cycleTime = 5000;
         const simulatedEmotions = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'fearful', 'disgusted'];
         const emotionIndex = Math.floor((now / cycleTime) % simulatedEmotions.length);
         const activeEmotion = simulatedEmotions[emotionIndex];
 
-        // Generate simulated expression values
-        const expressions = {
-          happy: 0.01,
-          sad: 0.01,
-          angry: 0.01,
-          surprised: 0.01,
-          neutral: 0.01,
-          fearful: 0.01,
-          disgusted: 0.01
-        };
-        expressions[activeEmotion] = 0.82 + Math.sin(now / 500) * 0.05;
-        // Blend in minor percentages on other states
-        Object.keys(expressions).forEach((k) => {
-          if (k !== activeEmotion) {
-            expressions[k] = Math.max(0.01, 0.03 + Math.sin(now / 1000 + k.length) * 0.02);
-          }
+        const rawExpressions = {};
+        simulatedEmotions.forEach((k) => { rawExpressions[k] = 0.02; });
+        rawExpressions[activeEmotion] = 0.85 + Math.sin(now / 500) * 0.04;
+        simulatedEmotions.forEach((k) => {
+          if (k !== activeEmotion) rawExpressions[k] = Math.max(0.01, 0.04 + Math.sin(now / 1200 + k.length) * 0.02);
         });
 
-        // Simulating face coordinate movement
-        const boxX = (width - 240) / 2 + Math.sin(now / 2000) * 50;
-        const boxY = (height - 240) / 2 + Math.cos(now / 1500) * 20;
-        const boxW = 240 + Math.sin(now / 3000) * 8;
-        const boxH = 240 + Math.sin(now / 3000) * 8;
+        const expressions = smoothExpressions('sim_face_0', rawExpressions);
 
-        // Generate 68 face landmark positions (rotating skull vector representation)
+        const boxX = (width - 240) / 2 + Math.sin(now / 2000) * 40;
+        const boxY = (height - 240) / 2 + Math.cos(now / 1500) * 15;
+        const boxW = 240 + Math.sin(now / 3000) * 6;
+        const boxH = 240 + Math.sin(now / 3000) * 6;
+
         const positions = [];
         const centerX = boxX + boxW / 2;
         const centerY = boxY + boxH / 2;
-        const yaw = Math.sin(now / 2000) * 0.25; // Yaw rotation factor
-        const pitch = Math.cos(now / 2500) * 0.15; // Pitch rotation factor
-        const isBlinking = (now % 4000) < 180; // Blink for 180ms every 4s
+        const yaw = Math.sin(now / 2000) * 0.22;
+        const pitch = Math.cos(now / 2500) * 0.12;
+        const isBlinking = (now % 4000) < 160;
 
-        // 1. Jaw line (0..16)
         for (let i = 0; i <= 16; i++) {
           const angle = Math.PI + (i / 16) * Math.PI;
           const rx = boxW * 0.44 * Math.cos(angle);
           const ry = boxH * 0.46 * Math.sin(angle);
-          // Apply simple projection transform
-          const x = centerX + rx * Math.cos(yaw) - ry * Math.sin(pitch);
-          const y = centerY + ry * 0.7 + rx * Math.sin(yaw);
-          positions.push({ x, y });
+          positions.push({ x: centerX + rx * Math.cos(yaw) - ry * Math.sin(pitch), y: centerY + ry * 0.7 + rx * Math.sin(yaw) });
         }
-        // 2. Left Eyebrow (17..21)
         for (let i = 0; i < 5; i++) {
-          const x = centerX - boxW * 0.28 + (i / 4) * boxW * 0.2 + yaw * 12;
-          const y = centerY - boxH * 0.16 - Math.sin((i / 4) * Math.PI) * 12 + pitch * 10;
-          positions.push({ x, y });
+          positions.push({ x: centerX - boxW * 0.28 + (i / 4) * boxW * 0.2 + yaw * 12, y: centerY - boxH * 0.16 - Math.sin((i / 4) * Math.PI) * 12 + pitch * 10 });
         }
-        // 3. Right Eyebrow (22..26)
         for (let i = 0; i < 5; i++) {
-          const x = centerX + boxW * 0.08 + (i / 4) * boxW * 0.2 + yaw * 12;
-          const y = centerY - boxH * 0.16 - Math.sin((i / 4) * Math.PI) * 12 + pitch * 10;
-          positions.push({ x, y });
+          positions.push({ x: centerX + boxW * 0.08 + (i / 4) * boxW * 0.2 + yaw * 12, y: centerY - boxH * 0.16 - Math.sin((i / 4) * Math.PI) * 12 + pitch * 10 });
         }
-        // 4. Nose bridge (27..30)
         for (let i = 0; i < 4; i++) {
-          const x = centerX + yaw * 18;
-          const y = centerY - boxH * 0.1 + (i / 3) * boxH * 0.22 + pitch * 8;
-          positions.push({ x, y });
+          positions.push({ x: centerX + yaw * 18, y: centerY - boxH * 0.1 + (i / 3) * boxH * 0.22 + pitch * 8 });
         }
-        // 5. Nose bottom (31..35)
         for (let i = 0; i < 5; i++) {
-          const x = centerX - boxW * 0.08 + (i / 4) * boxW * 0.16 + yaw * 18;
-          const y = centerY + boxH * 0.12 + pitch * 10;
-          positions.push({ x, y });
+          positions.push({ x: centerX - boxW * 0.08 + (i / 4) * boxW * 0.16 + yaw * 18, y: centerY + boxH * 0.12 + pitch * 10 });
         }
-        // 6. Left eye (36..41)
-        const leCenterX = centerX - boxW * 0.16 + yaw * 10;
-        const leCenterY = centerY - boxH * 0.02 + pitch * 8;
-        const eyeRadiusX = boxW * 0.05;
-        const eyeRadiusY = isBlinking ? 0.6 : boxH * 0.03;
+        const leCX = centerX - boxW * 0.16 + yaw * 10;
+        const leCY = centerY - boxH * 0.02 + pitch * 8;
+        const eRX = boxW * 0.05;
+        const eRY = isBlinking ? 0.5 : boxH * 0.03;
         for (let i = 0; i < 6; i++) {
-          const angle = (i / 6) * 2 * Math.PI;
-          const x = leCenterX + eyeRadiusX * Math.cos(angle);
-          const y = leCenterY + eyeRadiusY * Math.sin(angle);
-          positions.push({ x, y });
+          const a = (i / 6) * 2 * Math.PI;
+          positions.push({ x: leCX + eRX * Math.cos(a), y: leCY + eRY * Math.sin(a) });
         }
-        // 7. Right eye (42..47)
-        const reCenterX = centerX + boxW * 0.16 + yaw * 10;
-        const reCenterY = centerY - boxH * 0.02 + pitch * 8;
+        const reCX = centerX + boxW * 0.16 + yaw * 10;
+        const reCY = centerY - boxH * 0.02 + pitch * 8;
         for (let i = 0; i < 6; i++) {
-          const angle = (i / 6) * 2 * Math.PI;
-          const x = reCenterX + eyeRadiusX * Math.cos(angle);
-          const y = reCenterY + eyeRadiusY * Math.sin(angle);
-          positions.push({ x, y });
+          const a = (i / 6) * 2 * Math.PI;
+          positions.push({ x: reCX + eRX * Math.cos(a), y: reCY + eRY * Math.sin(a) });
         }
-        // 8. Outer Lips (48..59)
         const mouthW = boxW * (activeEmotion === 'surprised' ? 0.12 : activeEmotion === 'angry' ? 0.14 : 0.18);
         const mouthH = boxH * (activeEmotion === 'surprised' ? 0.16 : activeEmotion === 'happy' ? 0.08 : 0.03);
         const mouthY = centerY + boxH * 0.22 + pitch * 14;
         for (let i = 0; i < 12; i++) {
-          const angle = (i / 12) * 2 * Math.PI;
+          const a = (i / 12) * 2 * Math.PI;
           let smileY = 0;
-          if (activeEmotion === 'happy') {
-            smileY = -Math.cos(angle) * 7;
-          } else if (activeEmotion === 'sad' || activeEmotion === 'angry') {
-            smileY = Math.cos(angle) * 6;
-          }
-          const x = centerX + mouthW * Math.cos(angle) + yaw * 15;
-          const y = mouthY + mouthH * Math.sin(angle) + smileY;
-          positions.push({ x, y });
+          if (activeEmotion === 'happy') smileY = -Math.cos(a) * 7;
+          else if (activeEmotion === 'sad' || activeEmotion === 'angry') smileY = Math.cos(a) * 6;
+          positions.push({ x: centerX + mouthW * Math.cos(a) + yaw * 15, y: mouthY + mouthH * Math.sin(a) + smileY });
         }
-        // 9. Inner Lips (60..67)
         for (let i = 0; i < 8; i++) {
-          const angle = (i / 8) * 2 * Math.PI;
-          const x = centerX + mouthW * 0.65 * Math.cos(angle) + yaw * 15;
-          const y = mouthY + mouthH * 0.45 * Math.sin(angle);
-          positions.push({ x, y });
+          const a = (i / 8) * 2 * Math.PI;
+          positions.push({ x: centerX + mouthW * 0.65 * Math.cos(a) + yaw * 15, y: mouthY + mouthH * 0.45 * Math.sin(a) });
         }
+
+        const { emotion: dominantEmotion, confidence } = getDominantEmotion(expressions, 0.1);
+        // Emit emotion change if provided
+        if (typeof onEmotionChange === 'function') {
+          // Use a ref to store previous emotion
+          if (!window.__prevEmotion__) {
+            window.__prevEmotion__ = dominantEmotion;
+            onEmotionChange(dominantEmotion);
+          } else if (window.__prevEmotion__ !== dominantEmotion) {
+            window.__prevEmotion__ = dominantEmotion;
+            onEmotionChange(dominantEmotion);
+          }
+        }
+        const color = getEmotionColor(dominantEmotion);
 
         const simulatedDetections = [{
           id: 'sim_face_0',
           box: { x: boxX, y: boxY, width: boxW, height: boxH },
-          dominantEmotion: activeEmotion,
-          confidence: expressions[activeEmotion],
-          emoji: getEmotionEmoji(activeEmotion),
-          color: getEmotionColor(activeEmotion),
+          dominantEmotion,
+          confidence,
+          emoji: getEmotionEmoji(dominantEmotion),
+          color,
           age: 24.5 + Math.sin(now / 8000) * 0.5,
           gender: 'female',
           genderProbability: 0.96,
@@ -193,22 +178,11 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
           landmarks: { positions }
         }];
 
-        // Draw HUD overlays for simulation
         simulatedDetections.forEach((face, index) => {
           const { x, y, width: w, height: h } = face.box;
-          const color = face.color;
-
-          // Corner Brackets
-          drawCyberpunkBox(ctx, x, y, w, h, color, face.dominantEmotion);
-
-          // Landmarks Mesh
-          if (showLandmarks && face.landmarks) {
-            drawFaceMesh(ctx, face.landmarks, color);
-          }
-
-          // Telemetry Readout
-          const drawOptions = { showConfidenceBars, showAgeGender };
-          const metadata = {
+          drawCyberpunkBox(ctx, x, y, w, h, face.color, face.dominantEmotion);
+          if (showLandmarks && face.landmarks) drawFaceMesh(ctx, face.landmarks, face.color);
+          drawTelemetryReadout(ctx, x, y, w, h, face.color, {
             subjectIndex: index + 1,
             dominantEmotion: face.dominantEmotion,
             confidence: face.confidence,
@@ -216,18 +190,14 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
             age: face.age,
             gender: face.gender,
             allExpressions: face.expressions
-          };
-          drawTelemetryReadout(ctx, x, y, w, h, color, metadata, drawOptions);
+          }, { showConfidenceBars, showAgeGender });
         });
 
-        // Draw futuristic simulation indicator text on canvas
+        // Simulator badge
         ctx.save();
         ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#FF4444';
-        ctx.fillText('NEURAL CORE SIMULATION ACTIVE', 15, 25);
-        ctx.strokeStyle = '#FF4444';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(10, 12, 210, 20);
+        ctx.fillStyle = '#FF4488';
+        ctx.fillText('◆ NEURAL SIMULATION ACTIVE', 12, 22);
         ctx.restore();
 
         setDetections(simulatedDetections);
@@ -236,17 +206,16 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
         return;
       }
 
-      // Check if video is ready for frames
-      if (!video || video.readyState !== 4 || video.paused || video.ended) {
+      // ── REAL WEBCAM MODE ────────────────────────────────────────────
+      if (!video || video.readyState < 2 || video.paused || video.ended || video.videoWidth === 0) {
         isProcessingRef.current = false;
         animationFrameIdRef.current = requestAnimationFrame(detectLoop);
         return;
       }
-      
-      const width = video.videoWidth || video.width;
-      const height = video.videoHeight || video.height;
-      
-      // Keep canvas size synchronized with video coordinates
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
@@ -254,21 +223,18 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
 
       try {
         const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-          inputSize: 224, // Optimized resolution for speed/accuracy balance
+          inputSize: 128, // Faster than 224, still accurate for real-time
           scoreThreshold: threshold
         });
 
-        // Run all 5 networks in parallel for this frame
         const rawResults = await faceapi
           .detectAllFaces(video, detectorOptions)
           .withFaceLandmarks()
           .withFaceExpressions()
           .withAgeAndGender();
 
-        // Clear canvas for fresh draw
         ctx.clearRect(0, 0, width, height);
 
-        // Calculate Frame Rate
         const now = performance.now();
         fpsFrameCountRef.current++;
         if (now - fpsLastTimeRef.current >= 1000) {
@@ -278,18 +244,37 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
         }
 
         if (rawResults && rawResults.length > 0) {
-          // Resize bounding coordinates to overlay dimensions
           const resizedResults = faceapi.resizeResults(rawResults, { width, height });
 
-          // Map for application consumption
+          // Clean up EMA buffer for faces no longer present
+          const currentIds = new Set(resizedResults.map((_, i) => `face_${i}`));
+          Object.keys(emaBufferRef.current).forEach((id) => {
+            if (!currentIds.has(id) && id !== 'sim_face_0') delete emaBufferRef.current[id];
+          });
+
           const formattedDetections = resizedResults.map((res, index) => {
             const { x, y, width: boxW, height: boxH } = res.detection.box;
-            const { emotion, confidence } = getDominantEmotion(res.expressions, threshold);
+            const faceId = `face_${index}`;
+
+            // Apply EMA smoothing to expression values
+            const smoothedExpressions = smoothExpressions(faceId, res.expressions);
+
+            const { emotion, confidence } = getDominantEmotion(smoothedExpressions, threshold);
+        // Emit emotion change for real detections
+        if (typeof onEmotionChange === 'function') {
+          if (!window.__prevEmotion__) {
+            window.__prevEmotion__ = emotion;
+            onEmotionChange(emotion);
+          } else if (window.__prevEmotion__ !== emotion) {
+            window.__prevEmotion__ = emotion;
+            onEmotionChange(emotion);
+          }
+        }
             const emoji = getEmotionEmoji(emotion);
             const color = getEmotionColor(emotion);
 
             return {
-              id: `face_${index}`,
+              id: faceId,
               box: { x, y, width: boxW, height: boxH },
               dominantEmotion: emotion,
               confidence,
@@ -298,30 +283,16 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
               age: res.age,
               gender: res.gender,
               genderProbability: res.genderProbability,
-              expressions: res.expressions,
+              expressions: smoothedExpressions,
               landmarks: res.landmarks
             };
           });
 
-          // Draw HUD overlay per face
           formattedDetections.forEach((face, index) => {
             const { x, y, width: w, height: h } = face.box;
-            const color = face.color;
-
-            // 1. Draw Corner Brackets
-            drawCyberpunkBox(ctx, x, y, w, h, color, face.dominantEmotion);
-
-            // 2. Draw Landmarks Wireframe Mesh
-            if (showLandmarks && face.landmarks) {
-              drawFaceMesh(ctx, face.landmarks, color);
-            }
-
-            // 3. Draw Cyberpunk Biometric Telemetry sidebar
-            const drawOptions = {
-              showConfidenceBars,
-              showAgeGender
-            };
-            const metadata = {
+            drawCyberpunkBox(ctx, x, y, w, h, face.color, face.dominantEmotion);
+            if (showLandmarks && face.landmarks) drawFaceMesh(ctx, face.landmarks, face.color);
+            drawTelemetryReadout(ctx, x, y, w, h, face.color, {
               subjectIndex: index + 1,
               dominantEmotion: face.dominantEmotion,
               confidence: face.confidence,
@@ -329,8 +300,7 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
               age: face.age,
               gender: face.gender,
               allExpressions: face.expressions
-            };
-            drawTelemetryReadout(ctx, x, y, w, h, color, metadata, drawOptions);
+            }, { showConfidenceBars, showAgeGender });
           });
 
           setDetections(formattedDetections);
@@ -338,22 +308,19 @@ export function useFaceDetection(videoRef, canvasRef, modelsLoaded, settings = {
           setDetections([]);
         }
       } catch (err) {
-        console.error('Face api loop error:', err);
+        console.error('Face detection loop error:', err);
       } finally {
         isProcessingRef.current = false;
         animationFrameIdRef.current = requestAnimationFrame(detectLoop);
       }
     };
 
-    // Begin loop
     animationFrameIdRef.current = requestAnimationFrame(detectLoop);
 
     return () => {
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-      }
+      if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
     };
-  }, [modelsLoaded, threshold, showLandmarks, showAgeGender, showConfidenceBars, simulatorMode]);
+  }, [modelsLoaded, threshold, showLandmarks, showAgeGender, showConfidenceBars, simulatorMode, smoothExpressions]);
 
   return { detections, fps };
 }

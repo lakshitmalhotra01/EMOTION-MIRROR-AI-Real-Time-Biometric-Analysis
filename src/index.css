@@ -2,56 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOKENS
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root, .theme-cyberpunk {
-  --color-accent: 20 184 166; /* teal-500 */
-  --color-accent-glow: 45 212 191; /* teal-400 */
-  --color-accent-secondary: 180 79 255; /* surprised/purple */
+  --color-accent:           20 184 166;   /* teal-500  */
+  --color-accent-glow:      45 212 191;   /* teal-400  */
+  --color-accent-secondary: 180 79 255;   /* purple    */
+  --color-accent-hex: #14b8a6;
 }
 .theme-biotech {
-  --color-accent: 16 185 129; /* emerald-500 */
-  --color-accent-glow: 52 211 153; /* emerald-400 */
-  --color-accent-secondary: 132 204 22; /* lime-500 */
+  --color-accent:           16 185 129;   /* emerald-500 */
+  --color-accent-glow:      52 211 153;   /* emerald-400 */
+  --color-accent-secondary: 132 204 22;   /* lime-500    */
+  --color-accent-hex: #10b981;
 }
 .theme-amber {
-  --color-accent: 245 158 11; /* amber-500 */
-  --color-accent-glow: 251 191 36; /* amber-400 */
-  --color-accent-secondary: 249 115 22; /* orange-500 */
+  --color-accent:           245 158 11;   /* amber-500  */
+  --color-accent-glow:      251 191 36;   /* amber-400  */
+  --color-accent-secondary: 249 115 22;   /* orange-500 */
+  --color-accent-hex: #f59e0b;
 }
 .theme-obsidian {
-  --color-accent: 100 116 139; /* slate-500 */
-  --color-accent-glow: 148 163 184; /* slate-400 */
-  --color-accent-secondary: 226 232 240; /* slate-200 */
+  --color-accent:           100 116 139;  /* slate-500 */
+  --color-accent-glow:      148 163 184;  /* slate-400 */
+  --color-accent-secondary: 226 232 240;  /* slate-200 */
+  --color-accent-hex: #64748b;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE
+   ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
   body {
     @apply bg-darkBg text-slate-100 font-sans selection:bg-slate-700 selection:text-white;
+    background-color: #020817;
   }
 }
 
-/* Cyberpunk Biometric Scanline Overlay */
+/* ═══════════════════════════════════════════════════════════════════════════
+   PARTICLE / ORB BACKGROUND
+   ═══════════════════════════════════════════════════════════════════════════ */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.05;
+  animation: orbFloat 20s ease-in-out infinite;
+  pointer-events: none;
+}
+.orb-1 {
+  width: 300px;
+  height: 300px;
+  background: rgb(var(--color-accent));
+  top: 10%;
+  left: 5%;
+  animation-delay: 0s;
+  animation-duration: 18s;
+}
+.orb-2 {
+  width: 200px;
+  height: 200px;
+  background: rgb(var(--color-accent-secondary));
+  bottom: 20%;
+  right: 8%;
+  animation-delay: -6s;
+  animation-duration: 22s;
+}
+.orb-3 {
+  width: 150px;
+  height: 150px;
+  background: rgb(var(--color-accent-glow));
+  top: 60%;
+  left: 40%;
+  animation-delay: -12s;
+  animation-duration: 25s;
+}
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%       { transform: translate(40px, -30px) scale(1.1); }
+  66%       { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BIOMETRIC GRID BACKDROP
+   ═══════════════════════════════════════════════════════════════════════════ */
+.bg-biometric-grid {
+  background-size: 30px 30px;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLASSMORPHISM CARDS
+   ═══════════════════════════════════════════════════════════════════════════ */
+.glass-panel {
+  background: rgba(10, 15, 30, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCANLINES
+   ═══════════════════════════════════════════════════════════════════════════ */
 .scanline-container {
   position: relative;
   overflow: hidden;
 }
-
 .scanline-container::after {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%,
-    rgba(0, 0, 0, 0.25) 50%
-  );
+  inset: 0;
+  background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.22) 50%);
   background-size: 100% 4px;
   z-index: 10;
   pointer-events: none;
-  opacity: 0.45;
+  opacity: 0.4;
 }
-
 .scanline-element {
   position: absolute;
   top: 0;
@@ -61,108 +130,147 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(255, 255, 255, 0.15) 10%,
-    rgba(255, 255, 255, 0.4) 50%,
-    rgba(255, 255, 255, 0.15) 90%,
+    rgba(255,255,255,0.12) 10%,
+    rgba(255,255,255,0.35) 50%,
+    rgba(255,255,255,0.12) 90%,
     transparent 100%
   );
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 10px rgba(255,255,255,0.2);
   z-index: 11;
   pointer-events: none;
   animation: scanlineMove 6s linear infinite;
-  opacity: 0.7;
+  opacity: 0.6;
 }
-
 @keyframes scanlineMove {
-  0% { top: 0%; }
+  0%   { top: 0%; }
   100% { top: 100%; }
 }
 
-/* Sci-fi Biometric Grid Backdrop */
-.bg-biometric-grid {
-  background-size: 30px 30px;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-}
-
-/* Glassmorphism Cyberpunk Cards */
-.glass-panel {
-  background: rgba(10, 15, 30, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.glass-panel-light {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-/* Custom High-tech Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(2, 8, 23, 0.5);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-/* Neon Text Glow Helper */
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEON TEXT GLOW
+   ═══════════════════════════════════════════════════════════════════════════ */
 .text-glow {
-  text-shadow: 0 0 8px currentColor;
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+}
+.text-glow-sm {
+  text-shadow: 0 0 6px currentColor;
 }
 
-/* Biometric Radial Ring Pulsing Animation */
-.pulse-ring {
-  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
-  animation: pulseRing 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+/* ═══════════════════════════════════════════════════════════════════════════
+   HEADING GLITCH / ENTRY ANIMATION
+   ═══════════════════════════════════════════════════════════════════════════ */
+.heading-glitch {
+  position: relative;
+  animation: headingEntry 1.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.heading-glitch::before,
+.heading-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+.heading-glitch::before {
+  color: rgb(var(--color-accent-secondary));
+  clip: rect(0, 900px, 0, 0);
+  animation: glitchTop 8s infinite 2s;
+}
+.heading-glitch::after {
+  color: rgb(var(--color-accent));
+  clip: rect(0, 900px, 0, 0);
+  animation: glitchBottom 8s infinite 2.5s;
+}
+@keyframes headingEntry {
+  0%   { opacity: 0; letter-spacing: 0.5em; filter: blur(6px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { letter-spacing: 0.1em; }
+}
+@keyframes glitchTop {
+  0%, 92%, 100% { opacity: 0; }
+  93% { opacity: 0.6; clip: rect(2px, 900px, 14px, 0); transform: translateX(-2px); }
+  95% { clip: rect(6px, 900px, 20px, 0); transform: translateX(2px); }
+  97% { clip: rect(1px, 900px, 8px, 0); transform: translateX(0px); }
+}
+@keyframes glitchBottom {
+  0%, 94%, 100% { opacity: 0; }
+  95% { opacity: 0.5; clip: rect(18px, 900px, 30px, 0); transform: translateX(2px); }
+  97% { clip: rect(22px, 900px, 36px, 0); transform: translateX(-2px); }
+  99% { clip: rect(16px, 900px, 28px, 0); transform: translateX(0px); }
 }
 
-@keyframes pulseRing {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
-  }
-}
-
-/* Cyberpunk Corner Decors */
+/* ═══════════════════════════════════════════════════════════════════════════
+   CYBER CORNER DECORATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
 .corner-border {
   position: relative;
 }
-.corner-border::before, .corner-border::after {
+.corner-border::before,
+.corner-border::after {
   content: "";
   position: absolute;
   width: 8px;
   height: 8px;
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.2);
   border-style: solid;
   pointer-events: none;
 }
 .corner-border::before {
-  top: -1px;
-  left: -1px;
+  top: -1px; left: -1px;
   border-width: 1px 0 0 1px;
 }
 .corner-border::after {
-  bottom: -1px;
-  right: -1px;
+  bottom: -1px; right: -1px;
   border-width: 0 1px 1px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSE RING
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pulse-ring {
+  animation: pulseRing 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+@keyframes pulseRing {
+  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.2); }
+  70%  { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAGE ENTRY ANIMATION
+   ═══════════════════════════════════════════════════════════════════════════ */
+.page-enter {
+  animation: pageEnter 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CUSTOM SCROLLBAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: rgba(2,8,23,0.5); }
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--color-accent), 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--color-accent), 0.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RANGE INPUT ACCENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgb(var(--color-accent));
+  box-shadow: 0 0 6px rgb(var(--color-accent));
+  cursor: pointer;
 }

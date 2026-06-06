@@ -1,0 +1,45 @@
+/* ── CameraOverlay component styles ─────────────────────────────────── */
+
+.camera-overlay-wrapper {
+  position: relative;
+  border-radius: 0.5rem;
+  overflow: visible; /* allow glow to bleed outside */
+  --overlay-color: #14b8a6;
+}
+
+/* Neon animated border — sits on top of content */
+.neon-border {
+  position: absolute;
+  inset: -2px;
+  border-radius: 0.6rem;
+  border: 2px solid var(--overlay-color);
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 0 8px var(--overlay-color), inset 0 0 8px color-mix(in srgb, var(--overlay-color) 20%, transparent);
+}
+
+/* Corner bracket decorations */
+.corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-style: solid;
+  border-color: var(--overlay-color);
+  pointer-events: none;
+  z-index: 22;
+  opacity: 0.9;
+}
+.corner.tl { top: -3px; left: -3px; border-width: 3px 0 0 3px; border-radius: 3px 0 0 0; }
+.corner.tr { top: -3px; right: -3px; border-width: 3px 3px 0 0; border-radius: 0 3px 0 0; }
+.corner.bl { bottom: -3px; left: -3px; border-width: 0 0 3px 3px; border-radius: 0 0 0 3px; }
+.corner.br { bottom: -3px; right: -3px; border-width: 0 3px 3px 0; border-radius: 0 0 3px 0; }
+
+/* Lightning flash overlay */
+.lightning-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  pointer-events: none;
+  z-index: 21;
+  opacity: 0;
+}

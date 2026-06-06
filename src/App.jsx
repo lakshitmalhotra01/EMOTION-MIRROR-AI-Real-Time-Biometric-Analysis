@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Hooks
@@ -21,6 +21,9 @@ import WebcamFeed from './components/WebcamFeed';
 import PermissionError from './components/PermissionError';
 import Dashboard from './components/Dashboard';
 import SnapshotGallery from './components/SnapshotGallery';
+import EmotionNotification from './components/EmotionNotification';
+import CameraOverlay from './components/CameraOverlay';
+import CognitivePanel from './components/CognitivePanel';
 
 export default function App() {
   // 1. Models loading states
@@ -61,6 +64,12 @@ export default function App() {
     return saved ? JSON.parse(saved).map(s => ({ ...s, timestamp: new Date(s.timestamp) })) : [];
   });
 
+  // 4. Current emotion state — defined BEFORE useFaceDetection so callback is stable
+  const [currentEmotion, setCurrentEmotion] = useState(null);
+  const handleEmotionChange = useCallback((emo) => {
+    setCurrentEmotion(emo);
+  }, []);
+
   // Save configurations changes
   useEffect(() => {
     localStorage.setItem('emotion_mirror_settings', JSON.stringify(settings));
@@ -91,7 +100,7 @@ export default function App() {
     }));
   };
 
-  // 4. Initialize model download on mount
+  // 5. Initialize model download on mount
   useEffect(() => {
     let active = true;
     const runLoader = async () => {
@@ -117,7 +126,7 @@ export default function App() {
     };
   }, []);
 
-  // 5. Hook triggers
+  // 6. Hook triggers
   const {
     videoRef,
     permissionError,
@@ -128,11 +137,13 @@ export default function App() {
 
   const canvasRef = useRef(null);
 
+  // Face detection hook providing detections and fps, with emotion change callback
   const { detections, fps } = useFaceDetection(
     videoRef,
     canvasRef,
     modelsLoaded,
-    { ...settings, simulatorMode }
+    { ...settings, simulatorMode },
+    handleEmotionChange
   );
 
   const { history, addReading, clearHistory } = useEmotionHistory(50, 1000);
@@ -146,21 +157,20 @@ export default function App() {
     formatUptime
   } = useSessionStats();
 
-  // 6. Real-Time Mind Tech Telemetry (rPPG Heart Rate & Liveness Anti-Spoofing)
+  // 7. Real-Time Mind Tech Telemetry (rPPG Heart Rate & Liveness Anti-Spoofing)
   const { bpm, hrv, pulseData } = useRPPG(detections, isCameraActive, simulatorMode);
   const { livenessStatus, blinkCount, isSpoofAlert } = useLivenessDetection(detections, isCameraActive, simulatorMode);
 
-  // 7. Connect camera lifecycle
+  // 8. Connect camera lifecycle — auto-start on load
   useEffect(() => {
-    // If simulator mode is active, do not turn on camera
     if (modelsLoaded && isCameraActive && !simulatorMode) {
       startWebcam();
-    } else {
+    } else if (!isCameraActive) {
       stopWebcam();
     }
   }, [modelsLoaded, isCameraActive, simulatorMode, startWebcam, stopWebcam]);
 
-  // 8. Connect detections telemetry to history and session recorders
+  // 9. Connect detections telemetry to history and session recorders
   useEffect(() => {
     if ((modelsLoaded && isCameraActive) || simulatorMode) {
       updateStats(detections);
@@ -168,18 +178,18 @@ export default function App() {
     }
   }, [detections, modelsLoaded, isCameraActive, simulatorMode, updateStats, addReading]);
 
-  // 9. Calculate overall Positivity Quotient
+  // 10. Calculate overall Positivity Quotient
   const currentPositivityScore = detections.length > 0
     ? calculatePositivityScore(detections[0].expressions)
     : history.length > 0 && history[0].faceCount > 0
       ? history[0].positivityScore
       : 50;
 
-  // 10. Dynamic Background Glow transition
-  const activeEmotion = detections.length > 0 
-    ? detections[0].dominantEmotion 
+  // 11. Dynamic Background Glow transition
+  const activeEmotion = detections.length > 0
+    ? detections[0].dominantEmotion
     : 'neutral';
-  
+
   const activeColor = getEmotionColor(activeEmotion);
 
   const handleCapture = () => {
@@ -190,7 +200,6 @@ export default function App() {
           canvasRef.current,
           detections
         );
-        // Keep max 12 captures
         setSnapshots((prev) => [snap, ...prev.slice(0, 11)]);
       } catch (err) {
         console.error('Capture snapshot failed:', err);
@@ -208,23 +217,28 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-darkBg text-slate-200 overflow-x-hidden bg-biometric-grid">
-      
-      {/* Dynamic Background Glow Element */}
+
+      {/* ── Animated Particle / Orb Background ── */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div 
-          style={{ 
-            backgroundColor: activeColor,
-            filter: 'blur(120px)'
-          }} 
-          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] rounded-full opacity-[0.06] transition-colors duration-1000 ease-in-out" 
+        {/* Large primary glow orb (emotion-reactive colour) */}
+        <div
+          style={{ backgroundColor: activeColor, filter: 'blur(140px)' }}
+          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-[0.07] transition-colors duration-1000 ease-in-out"
         />
+        {/* Static accent orbs for depth */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-themeAccent opacity-[0.04] blur-[100px]" />
+        <div className="absolute bottom-0 right-0 w-80 h-80 rounded-full bg-purple-600 opacity-[0.04] blur-[120px]" />
+        {/* Moving small orbs */}
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
       </div>
 
       {/* Boot Loading Screen overlay */}
       <AnimatePresence>
         {!modelsLoaded && (
-          <LoadingScreen 
-            loadingStatus={loadingStatus} 
+          <LoadingScreen
+            loadingStatus={loadingStatus}
             onBypass={() => {
               setSimulatorMode(true);
               setModelsLoaded(true);
@@ -233,10 +247,13 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* ── Emotion Notification Toast ── */}
+      <EmotionNotification emotion={currentEmotion} />
+
       {/* Main App HUD */}
       {modelsLoaded && (
         <div className="flex-1 flex flex-col z-10">
-          <Header 
+          <Header
             fps={fps}
             faceCount={detections.length}
             settings={settings}
@@ -250,37 +267,39 @@ export default function App() {
           />
 
           <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6 sm:px-6 lg:px-8 flex flex-col space-y-6">
-            
-            {/* Top Layout Grid: Left Feed card vs Right Dashboard statistics */}
+
+            {/* Top Layout Grid: Left Feed vs Right Dashboard */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
-              {/* Left Column: Webcam Card / Permissions errors */}
+
+              {/* Left Column: Camera Feed */}
               <div className="lg:col-span-7 xl:col-span-7 w-full">
                 {permissionError && !simulatorMode ? (
-                  <PermissionError 
-                    errorType={permissionError} 
-                    onRetry={startWebcam} 
+                  <PermissionError
+                    errorType={permissionError}
+                    onRetry={startWebcam}
                   />
                 ) : (
-                  <WebcamFeed 
-                    videoRef={videoRef}
-                    canvasRef={canvasRef}
-                    faceCount={detections.length}
-                    onCapture={handleCapture}
-                    isCameraActive={isCameraActive}
-                    livenessStatus={livenessStatus}
-                    isSpoofAlert={isSpoofAlert}
-                    pulseData={pulseData}
-                    bpm={bpm}
-                    hrv={hrv}
-                    simulatorMode={simulatorMode}
-                  />
+                  <CameraOverlay emotion={currentEmotion || activeEmotion}>
+                    <WebcamFeed
+                      videoRef={videoRef}
+                      canvasRef={canvasRef}
+                      faceCount={detections.length}
+                      onCapture={handleCapture}
+                      isCameraActive={isCameraActive}
+                      livenessStatus={livenessStatus}
+                      isSpoofAlert={isSpoofAlert}
+                      pulseData={pulseData}
+                      bpm={bpm}
+                      hrv={hrv}
+                      simulatorMode={simulatorMode}
+                    />
+                  </CameraOverlay>
                 )}
               </div>
 
-              {/* Right Column: Dashboard grid analytics */}
-              <div className="lg:col-span-5 xl:col-span-5 w-full">
-                <Dashboard 
+              {/* Right Column: Dashboard + Cognitive Panel */}
+              <div className="lg:col-span-5 xl:col-span-5 w-full flex flex-col gap-4">
+                <Dashboard
                   positivityScore={currentPositivityScore}
                   uptimeStr={formatUptime()}
                   maxFaces={maxConcurrentFaces}
@@ -289,12 +308,18 @@ export default function App() {
                   history={history}
                   blinkCount={blinkCount}
                 />
+                <CognitivePanel
+                  currentEmotion={currentEmotion || activeEmotion}
+                  positivityScore={currentPositivityScore}
+                  dominantEmotion={getSessionDominantEmotion()}
+                  expressions={detections.length > 0 ? detections[0].expressions : null}
+                />
               </div>
 
             </div>
 
-            {/* Bottom Row: Captured Snapshot grid gallery */}
-            <SnapshotGallery 
+            {/* Bottom Row: Snapshot Gallery */}
+            <SnapshotGallery
               snapshots={snapshots}
               onDeleteSnapshot={handleDeleteSnapshot}
             />
